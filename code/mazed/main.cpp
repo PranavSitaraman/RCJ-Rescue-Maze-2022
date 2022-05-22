@@ -5,22 +5,24 @@
 #include <csignal>
 #include <unistd.h>
 #include <gpiod.hpp>
+
 using namespace std::chrono_literals;
-int main()
-{
+
+int main(){
 	std::error_code err;
-	std::filesystem::remove("map",err);
+	std::filesystem::remove("/home/pi/map1",err);
+	std::filesystem::remove("/home/pi/map2",err);
+
 	constexpr auto BUTTON_PIN = 27;
+
 	gpiod::chip chip("/dev/gpiochip0");
 	auto line = chip.get_line(BUTTON_PIN);
 	line.request({"mazed",gpiod::line_request::DIRECTION_INPUT,0});
+
 	pid_t pid = 0;
-	for (;;)
-	{
-		if (line.get_value())
-		{
-			if (pid)
-			{
+	for(;;){
+		if(line.get_value()){
+			if(pid){
 				kill(pid,SIGKILL);
 				pid = 0;
 				std::cout << "killing\n";
@@ -28,17 +30,14 @@ int main()
 				continue;
 			}
 			pid = fork();
-			if (pid == -1)
-			{
+			if(pid == -1){
 				std::perror("fork");
 				return 1;
 			}
-			if (!pid)
-			{
+			if(!pid){
 				std::cout << "running\n";
-				// close(STDOUT_FILENO);
-				if (execl("/home/pi/maze-2022/pi/build/maze-2022","maze-2022",NULL) == -1)
-				{
+//				close(STDOUT_FILENO);
+				if(execl("/home/pi/maze-2022/pi/build/maze-2022","maze-2022",NULL) == -1){
 					std::perror("execl");
 					std::exit(1);
 				}

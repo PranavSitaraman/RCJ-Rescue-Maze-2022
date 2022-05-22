@@ -16,21 +16,23 @@ namespace Move
 {
   enum Move : uint8_t { FAILURE, SUCCESS, WALL };
 }
-constexpr auto RESET = Dir::W+1;
+constexpr auto RESET = Dir::W + 1;
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *motors[4] = {AFMS.getMotor(1), AFMS.getMotor(2), AFMS.getMotor(3), AFMS.getMotor(4)};
 VL53L0X tof;
 Adafruit_BNO055 bno(55);
 Servo servo;
-constexpr uint8_t VLX[]{3, 1, 2, 4};
-constexpr uint8_t BOS[]{5, 6};
+constexpr uint8_t VLX[] {3, 1, 2, 4};
+constexpr uint8_t BOS[] {5, 6};
 constexpr uint8_t ENC = 2;
 constexpr uint8_t DIST_THRESH = 10;
 constexpr uint8_t DIST_THRESH2 = 5;
 constexpr uint8_t LED = 12;
 constexpr double WHEEL_RAD = 3.25;
-volatile uint16_t encoder[4]{};
-void encoderISR() { encoder[0]++; }
+volatile uint16_t encoder[4] {};
+void encoderISR() {
+  encoder[0]++;
+}
 void tcaselect(uint16_t i)
 {
   Wire.beginTransmission(0x70);
@@ -55,7 +57,7 @@ void drop(int side)
   {
     servo.write(120);
     delay(1000);
-    servo.write(40);
+    servo.write(45);
     delay(1000);
     servo.write(60);
   }
@@ -63,7 +65,7 @@ void drop(int side)
   {
     servo.write(0);
     delay(1000);
-    servo.write(80);
+    servo.write(75);
     delay(1000);
     servo.write(60);
   }
@@ -112,26 +114,26 @@ Move::Move move(const bool dir[4], double a, double motorSpeed)
   }
   while (encoder[0] < ((75 * 48 * a) / (2 * PI * WHEEL_RAD)) * (0.25) / (b))
   {
-    tcaselect(BOS[1]);
-    sensors_event_t event;
-    bno.getEvent(&event);
-    if (abs(event.gyro.y) > 15) 
+    if (abs(orientation(Coord::Y, BOS[1])) > 15)
     {
-      if (event.gyro.y < -15)
+      while (abs(orientation(Coord::Y, BOS[1])) > 15)
       {
-        for (uint16_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
+        if (orientation(Coord::Y, BOS[1]) < -15)
         {
-          motors[i]->setSpeed(motorSpeed * 0.5);
+          for (uint16_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
+          {
+            motors[i]->setSpeed(motorSpeed * 0.5);
+          }
+        }
+        else
+        {
+          for (uint16_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
+          {
+            motors[i]->setSpeed(motorSpeed * 3.0 / 2.0);
+          }
         }
       }
-      else
-      {
-        for (uint16_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
-        {
-          motors[i]->setSpeed(motorSpeed * 3.0/2.0);
-        }
-      }
-      while (abs(event.gyro.y) > 15);
+      motorReset();
       return Move::WALL;
     }
     uint16_t left = distance(VLX[Dir::W]) / 10;
@@ -154,7 +156,7 @@ Move::Move move(const bool dir[4], double a, double motorSpeed)
       motors[1]->setSpeed(motorSpeed + kp * (DIST_THRESH - left));
       motors[2]->setSpeed(motorSpeed + kp * (DIST_THRESH - left));
     }
-    else if(left > 2 * DIST_THRESH && right <= 2 * DIST_THRESH)
+    else if (left > 2 * DIST_THRESH && right <= 2 * DIST_THRESH)
     {
       motors[0]->setSpeed(motorSpeed + kp * (DIST_THRESH - right));
       motors[3]->setSpeed(motorSpeed + kp * (DIST_THRESH - right));
@@ -171,33 +173,33 @@ Move::Move move(const bool dir[4], double a, double motorSpeed)
     switch (Serial1.read())
     {
       case 0:
-      {
-        for (const auto &motor : motors)
         {
-          motor->run(RELEASE);
+          for (const auto &motor : motors)
+          {
+            motor->run(RELEASE);
+          }
+          handleVictim();
+          for (uint8_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
+          {
+            motors[i]->setSpeed(motorSpeed);
+            motors[i]->run(dir[i] ? FORWARD : BACKWARD);
+          }
+          break;
         }
-        handleVictim();
-        for (uint8_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
-        {
-          motors[i]->setSpeed(motorSpeed);
-          motors[i]->run(dir[i] ? FORWARD : BACKWARD);
-        }
-        break;
-      }
       case 1:
-      {
-        uint16_t reverse = encoder[0];
-        motorReset();
-        for (uint16_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
         {
-          motors[i]->setSpeed(motorSpeed);
-          motors[i]->run(dir[i] ? BACKWARD : FORWARD);
+          uint16_t reverse = encoder[0];
+          motorReset();
+          for (uint16_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
+          {
+            motors[i]->setSpeed(motorSpeed);
+            motors[i]->run(dir[i] ? BACKWARD : FORWARD);
+          }
+          while (encoder[0] < reverse);
+          motorReset();
+          Serial1.write((uint8_t)1);
+          return Move::FAILURE;
         }
-        while (encoder[0] < reverse);
-        motorReset();
-        Serial1.write((uint8_t)1);
-        return Move::FAILURE;
-      }
     }
   }
   uint16_t up = distance(VLX[Dir::N]) / 10;
@@ -209,12 +211,12 @@ Move::Move move(const bool dir[4], double a, double motorSpeed)
 }
 bool forward(double a = 35, double motorSpeed = 0.5)
 {
-  static constexpr bool dir[]{true, false, false, true};
+  static constexpr bool dir[] {true, false, false, true};
   return move(dir, a, motorSpeed);
 }
 bool backward(double a = 35, double motorSpeed = 0.5)
 {
-  static constexpr bool dir[]{false, true, true, false};
+  static constexpr bool dir[] {false, true, true, false};
   return move(dir, a, motorSpeed);
 }
 void turn(const bool dir[4], double a, double motorSpeed, uint16_t port)
@@ -225,38 +227,23 @@ void turn(const bool dir[4], double a, double motorSpeed, uint16_t port)
     motors[i]->run(dir[i] ? FORWARD : BACKWARD);
   }
   int16_t start = orientation(Coord::X, port);
-  while (abs((orientation(Coord::X, port) - start + 540) % 360 - 180) < a)
-  {
-    if (Serial1.read() == 0)
-    {
-      for (const auto &motor : motors)
-      {
-        motor->run(RELEASE);
-      }
-      handleVictim();
-      for (uint8_t i = 0; i < sizeof(motors) / sizeof(*motors); i++)
-      {
-        motors[i]->setSpeed(motorSpeed);
-        motors[i]->run(dir[i] ? FORWARD : BACKWARD);
-      }
-    }
-  }
+  while (abs((orientation(Coord::X, port) - start + 540) % 360 - 180) < a);
   motorReset();
 }
 void left(double a = 90, double motorSpeed = 0.5, uint16_t port = BOS[0])
 {
-  static constexpr bool dir[4]{true, true, true, true};
+  static constexpr bool dir[4] {true, true, true, true};
   turn(dir, a, motorSpeed * 255, port);
 }
 void right(double a = 90, double motorSpeed = 0.5, uint16_t port = BOS[0])
 {
-  static constexpr bool dir[4]{};
+  static constexpr bool dir[4] {};
   turn(dir, a, motorSpeed * 255, port);
 }
 void setup()
 {
-  pinMode(6,OUTPUT);
-  analogWrite(6,168);
+  pinMode(6, OUTPUT);
+  analogWrite(6, 168);
   Serial.begin(9600);
   Serial1.begin(9600);
   Wire.begin();
@@ -277,11 +264,8 @@ void setup()
   servo.attach(9);
   servo.write(60);
   pinMode(LED, OUTPUT);
-  digitalWrite(LED, HIGH);
-  delay(5000);
-  digitalWrite(LED, LOW);
   motorReset();
-  Serial.write((uint8_t)1);
+  Serial.write((uint8_t) 1);
 }
 void loop()
 {
@@ -295,32 +279,32 @@ void loop()
       switch (command)
       {
         case Dir::N:
-        {
-          state = forward();
-          break;
-        }
+          {
+            state = forward();
+            break;
+          }
         case Dir::E:
-        {
-          right();
-          state = forward();
-          break;
-        }
+          {
+            right();
+            state = forward();
+            break;
+          }
         case Dir::S:
-        {
-          state = backward();
-          break;
-        }
+          {
+            state = backward();
+            break;
+          }
         case Dir::W:
-        {
-          left();
-          state = forward();
-          break;
-        }
+          {
+            left();
+            state = forward();
+            break;
+          }
         case RESET:
-        {
-          resetFunc();
-          break;
-        }
+          {
+            resetFunc();
+            break;
+          }
       }
       Serial.write(state);
     }
